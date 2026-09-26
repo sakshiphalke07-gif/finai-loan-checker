@@ -1,0 +1,18 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Send API requests to the Express-backed Netlify Function first.
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+
+# Serve the single-page FinAI frontend for all browser routes.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
