@@ -6,7 +6,7 @@
  *  Contains:
  *   - Express server & API routes
  *   - EMI / Eligibility / Credit Score / Financial Health calculation engines
- *   - Claude (Anthropic) AI integration
+ *   - Gemini AI integration (Google Gemini API)
  *   - Google Sheets persistence layer
  *   - Full embedded frontend (HTML/CSS/JS) — dark glassmorphism fintech UI
  * ============================================================================
@@ -17,7 +17,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
-const Anthropic = require('@anthropic-ai/sdk');
 const { google } = require('googleapis');
 
 const app = express();
@@ -29,7 +28,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
-// Basic rate limiting — protects the Claude/Sheets endpoints from abuse.
+// Basic rate limiting — protects the Gemini/Sheets endpoints from abuse.
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 60,                  // 60 requests per window per IP
@@ -40,13 +39,13 @@ const apiLimiter = rateLimit({
 app.use('/api/', apiLimiter);
 
 // ----------------------------------------------------------------------------
-// Anthropic Claude client (server-side only — never exposed to the browser)
+// Google Gemini client configuration (server-side only — never exposed to browser)
 // ----------------------------------------------------------------------------
-let anthropic = null;
-if (process.env.ANTHROPIC_API_KEY) {
-  anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-} else {
-  console.warn('[FinAI] ANTHROPIC_API_KEY is not set. AI features will use fallback responses.');
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const geminiConfigured = !!process.env.GEMINI_API_KEY;
+
+if (!geminiConfigured) {
+  console.warn('[FinAI] GEMINI_API_KEY is not set. AI features will use fallback responses.');
 }
 
 // ----------------------------------------------------------------------------
@@ -371,21 +370,21 @@ function calculateFinancialHealth(profile) {
 }
 
 // ----------------------------------------------------------------------------
-// CLAUDE (ANTHROPIC) INTEGRATION
+// GEMINI AI INTEGRATION
 // ----------------------------------------------------------------------------
-const CLAUDE_SYSTEM_PROMPT = `You are an AI financial education and loan-planning assistant embedded inside "FinAI", an educational BFSI web platform.
+const GEMINI_SYSTEM_PROMPT = `You are an AI financial education and loan-planning assistant embedded inside "FinAI", an educational BFSI web platform.
 
 Rules you must always follow:
 - Analyze only the information explicitly supplied to you. Never invent financial data.
-- Clearly distinguish deterministic calculations (already computed and provided to you) from your own generated insights.
+- Clearly distinguish deterministic calculations (already computed and provided to you) from generated insights.
 - Never guarantee loan approval or claim to represent, or act on behalf of, any bank or lender.
 - Explain financial concepts in simple, plain language accessible to a non-expert.
 - Provide personalized, responsible, and actionable suggestions.
-- Mention uncertainty where appropriate — you are producing an educational estimate, not an official decision.
-- Never request or reference unnecessary sensitive information (no account numbers, national ID numbers, passwords, etc).
-- Respond ONLY with valid JSON matching the exact schema given in the user message. No preamble, no markdown code fences, no extra commentary.`;
+- Mention uncertainty where appropriate — this is an educational estimate, not an official lending decision.
+- Never request or reference unnecessary sensitive information (no account numbers, national ID numbers, passwords, etc.).
+- Return only the requested JSON object; do not include markdown or commentary.`;
 
-function buildClaudePrompt(profile, calculations) {
+function buildGeminiPrompt(profile, calculations) {
   return `Analyze the following user-supplied financial profile and pre-computed calculations, then produce a structured JSON response.
 
 FINANCIAL PROFILE (user-supplied):
@@ -415,7 +414,7 @@ PRE-COMPUTED CALCULATIONS (already accurate — do not recompute or contradict):
 - Eligibility status: ${calculations.eligibilityStatus}
 - Risk level: ${calculations.riskLevel}
 
-Return ONLY this JSON schema, with no other text:
+Return only the JSON object matching this schema:
 {
   "eligibilitySummary": "2-3 sentence plain-language summary of the eligibility outlook",
   "eligibilityStatus": "Eligible | Conditionally Eligible | Needs Improvement",
@@ -449,31 +448,54 @@ function fallbackAiResult(calculations) {
   };
 }
 
-async function callClaude(profile, calculations) {
-  if (!anthropic) {
-    return fallbackAiResult(calculations);
-  }
+async function callGemini(profile, calculations) {
+  if (!geminiConfigured) return fallbackAiResult(calculations);
 
   try {
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      system: CLAUDE_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: buildClaudePrompt(profile, calculations) }]
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': process.env.GEMINI_API_KEY
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: GEMINI_SYSTEM_PROMPT }] },
+        contents: [{ role: 'user', parts: [{ text: buildGeminiPrompt(profile, calculations) }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'OBJECT',
+            properties: {
+              eligibilitySummary: { type: 'STRING' },
+              eligibilityStatus: { type: 'STRING' },
+              riskLevel: { type: 'STRING' },
+              riskExplanation: { type: 'STRING' },
+              emiInsight: { type: 'STRING' },
+              financialTips: { type: 'ARRAY', items: { type: 'STRING' } },
+              improvementActions: { type: 'ARRAY', items: { type: 'STRING' } }
+            },
+            required: ['eligibilitySummary','eligibilityStatus','riskLevel','riskExplanation','emiInsight','financialTips','improvementActions']
+          },
+          temperature: 0.2,
+          maxOutputTokens: 1000
+        }
+      })
     });
 
-    const rawText = message.content
-      .filter((block) => block.type === 'text')
-      .map((block) => block.text)
-      .join('\n')
-      .trim();
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error?.message || `Gemini API returned HTTP ${response.status}`);
+    }
 
-    const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
-    const parsed = JSON.parse(cleaned);
+    const rawText = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim();
+    if (!rawText) throw new Error('Gemini returned an empty response.');
+
+    const parsed = JSON.parse(rawText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim());
     parsed.aiGenerated = true;
     return parsed;
   } catch (err) {
-    console.error('[FinAI] Claude API error or malformed JSON:', err.message);
+    console.error('[FinAI] Gemini API error or malformed JSON:', err.message);
     return fallbackAiResult(calculations);
   }
 }
@@ -486,7 +508,8 @@ async function callClaude(profile, calculations) {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    claudeConfigured: !!anthropic,
+    geminiConfigured,
+    geminiModel: GEMINI_MODEL,
     sheetsConfigured: !!getGoogleSheetsClient(),
     timestamp: new Date().toISOString()
   });
@@ -548,7 +571,7 @@ app.post('/api/analyze', async (req, res) => {
     let aiResult;
     let aiAvailable = true;
     try {
-      aiResult = await callClaude(profile, calculations);
+      aiResult = await callGemini(profile, calculations);
       aiAvailable = aiResult.aiGenerated !== false;
     } catch (aiErr) {
       aiResult = fallbackAiResult(calculations);
@@ -978,7 +1001,7 @@ const FRONTEND_HTML = `
       </div>
       <div class="why-grid">
         <div class="why-card glass fade-up"><div class="icn">📊</div><h3>Transparent calculations</h3><p>Every number — EMI, DTI, eligibility score — is computed with a visible, explainable formula, not a black box.</p></div>
-        <div class="why-card glass fade-up"><div class="icn">🧠</div><h3>AI-generated guidance</h3><p>Claude analyzes your profile to surface plain-language insights and personalized next steps.</p></div>
+        <div class="why-card glass fade-up"><div class="icn">🧠</div><h3>AI-generated guidance</h3><p>Gemini analyzes your profile to surface plain-language insights and personalized next steps.</p></div>
         <div class="why-card glass fade-up"><div class="icn">🔒</div><h3>Privacy-conscious</h3><p>We only ask for what's needed to run the calculations — no account numbers, no ID numbers, ever.</p></div>
       </div>
     </div>
@@ -1199,7 +1222,7 @@ const FRONTEND_HTML = `
       </div>
       <div class="steps-grid">
         <div class="step-card glass fade-up"><div class="step-num">01</div><h4>Enter financial details</h4><p>Share your income, expenses, credit and loan information once.</p></div>
-        <div class="step-card glass fade-up"><div class="step-num">02</div><h4>AI + financial analysis</h4><p>Our engine computes EMI, DTI and eligibility while Claude analyzes context.</p></div>
+        <div class="step-card glass fade-up"><div class="step-num">02</div><h4>AI + financial analysis</h4><p>Our engine computes EMI, DTI and eligibility while Gemini analyzes context.</p></div>
         <div class="step-card glass fade-up"><div class="step-num">03</div><h4>Eligibility & risk assessment</h4><p>See a transparent breakdown of your eligibility score and risk level.</p></div>
         <div class="step-card glass fade-up"><div class="step-num">04</div><h4>Personalized insights</h4><p>Get plain-language tips and an improvement checklist tailored to you.</p></div>
       </div>
@@ -1214,7 +1237,7 @@ const FRONTEND_HTML = `
         <p>We only collect the information needed to run these calculations.</p>
         <ul>
           <li>No passwords, account or card numbers are ever requested.</li>
-          <li>Claude API keys and Google credentials stay server-side, never sent to your browser.</li>
+          <li>Gemini API keys and Google credentials stay server-side, never sent to your browser.</li>
           <li>Records are stored only if Google Sheets is configured by the site operator.</li>
         </ul>
       </div>
@@ -1553,7 +1576,7 @@ app.get('/', (req, res) => {
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`[FinAI] Server running on http://localhost:${PORT}`);
-    console.log(`[FinAI] Claude configured: ${!!anthropic}`);
+    console.log(`[FinAI] Gemini configured: ${geminiConfigured}`);
     console.log(`[FinAI] Google Sheets configured: ${!!getGoogleSheetsClient()}`);
   });
 }
