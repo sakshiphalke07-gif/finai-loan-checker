@@ -1,7 +1,7 @@
 WEBSITE LINK : https://financexai.netlify.app/
 
 
-DOCUMENTATION : FinAI_Project_Documentation.docx
+DOCUMENTATION : [📄 FinAI Project Documentation](FinAI_Project_Documentation.docx)
 
 
 LIVE DEMO : https://drive.google.com/file/d/1CnleF5hftGWakzqZPMPuIN8RlLjRZXXQ/view?usp=sharing
