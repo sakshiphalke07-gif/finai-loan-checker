@@ -1,4 +1,8 @@
-# FinAI — AI-Powered Loan Intelligence
+WEBSITE LINK : https://financexai.netlify.app/
+DOCUMENTATION : FinAI_Project_Documentation.docx
+LIVE DEMO : https://drive.google.com/file/d/1CnleF5hftGWakzqZPMPuIN8RlLjRZXXQ/view?usp=sharing
+
+# FinancexAI — AI-Powered Loan Intelligence
 
 Netlify-ready full-stack BFSI web application using:
 - HTML/CSS/vanilla JavaScript frontend
