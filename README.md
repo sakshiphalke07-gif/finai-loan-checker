@@ -8,6 +8,38 @@ LIVE DEMO : https://drive.google.com/file/d/1CnleF5hftGWakzqZPMPuIN8RlLjRZXXQ/vi
 
 # FinancexAI — AI-Powered Loan Intelligence
 
+# 💰 FinAancexAI — Smart Financial Decision Assistant
+
+**FinanceAI** is a web-based financial decision assistant designed to help users understand basic financial concepts and make more informed financial decisions. It provides tools for estimating loan eligibility, analyzing credit-related information, calculating EMIs, and receiving personalized financial tips based on user inputs.
+
+The project demonstrates how web technologies can be used to create an accessible, interactive platform for basic financial planning.
+
+
+## 📖 Overview
+
+FinAI aims to simplify everyday financial calculations and provide basic financial guidance through a user-friendly website. Instead of manually calculating loan EMIs or exploring different financial indicators, users can enter relevant information and receive quick estimates.
+
+The current version is a **frontend prototype** that uses JavaScript-based calculations and predefined rules. It is intended for educational and demonstration purposes.
+
+## 🎯 Objectives
+
+- Simplify basic financial calculations.
+- Help users estimate loan affordability and monthly repayments.
+- Present credit-related information in an understandable format.
+- Provide useful financial tips based on user inputs.
+- Demonstrate the practical application of HTML, CSS, and JavaScript.
+- Create a foundation for future AI-powered financial assistance.
+
+## ✨ Key Features
+
+### 1. Loan Eligibility Estimator
+Allows users to enter relevant financial details and receive an indicative estimate of loan eligibility.
+
+### 2. Credit Analyzer
+Provides a basic analysis of credit-related inputs and displays guidance to help users understand factors that may influence creditworthiness.
+
+### 3. EMI Calculator
+Calculates the estimated monthly instalment for
 Netlify-ready full-stack BFSI web application using:
 - HTML/CSS/vanilla JavaScript frontend
 - Node.js + Express API
