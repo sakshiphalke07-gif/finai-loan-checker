@@ -5,7 +5,7 @@
 FinAI is an AI-powered financial decision-support platform designed to help users understand their financial position before applying for a loan. It combines loan eligibility estimation, credit score analysis, EMI calculation, repayment comparison, and AI-generated financial guidance in one platform.
 
 **Live Website:** https://financexai.netlify.app/
-
+Documentation : 
 ---
 
 ## 1. PROJECT OVERVIEW
